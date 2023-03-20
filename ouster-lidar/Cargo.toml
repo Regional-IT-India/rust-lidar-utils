@@ -16,6 +16,12 @@ itertools = "0.10.3"
 num-traits = "0.2.14"
 noisy_float = { version = "0.2.0", features = ["serde"] }
 measurements = "0.11.0"
+log = "0.4.17"
+toml = "0.7.2"
+rustdds = "0.7.11"
+mio = "^0.6.23"
+mio-extras = "2.0.6"
+ctrlc = "3.1.6"
 
 [dev-dependencies]
 pcap = "0.9.1"
