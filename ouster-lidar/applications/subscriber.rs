@@ -3,12 +3,9 @@ use std::time::{Duration};
 use log::{debug, trace};
 use mio::{Events, Poll, PollOpt, Ready, Token};
 use mio_extras::channel;
-use rustdds::{DomainParticipant, Keyed, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind};
+use rustdds::{DomainParticipant, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind};
 use rustdds::policy::{Durability, History, Reliability};
-use serde::{Deserialize, Serialize};
-use ouster_lidar::{client::CommandClient, Column};
-
-use serde_big_array::BigArray;
+use ouster_lidar::{Column};
 
 const READER_READY: Token = Token(1);
 const READER_STATUS_READY: Token = Token(2);

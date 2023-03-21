@@ -5,17 +5,14 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use std::net::{IpAddr, Ipv6Addr};
 
 use anyhow::Result;
-use log::{debug, warn, error};
+use log::{warn, error};
 use serde::Deserialize;
 
-use ouster_lidar::{client::CommandClient, Column, Config, config, LidarMode, packet::Packet as OusterPacket};
-use ouster_lidar::pcd_converter;
-use ouster_lidar::consts;
+use ouster_lidar::{client::CommandClient, Column, packet::Packet as OusterPacket};
 
-use rustdds::{DomainParticipant, Keyed, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind};
+use rustdds::{DomainParticipant, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind};
 use rustdds::policy::{Durability, History, Reliability};
 use mio::{Events, Poll, PollOpt, Ready, Token};
 use mio_extras::channel;
@@ -54,15 +51,6 @@ fn main() -> Result<()> {
     let config_txt = client.get_config_txt()?;
     dbg!(&config_txt);
 
-    // let time_info    = client.get_time_info()?;
-    // dbg!(&time_info);
-    //
-    // let beam_intrinsics = client.get_beam_intrinsics()?;
-    // dbg!(&beam_intrinsics);
-    //
-    // let lidar_intrinsics = client.get_lidar_intrinsics()?;
-    // dbg!(&lidar_intrinsics);
-
     let imu_intrinsics = client.get_imu_intrinsics()?;
     dbg!(&imu_intrinsics);
 
@@ -76,7 +64,6 @@ fn main() -> Result<()> {
     client.set_udp_port_lidar(config_txt.udp_port_lidar)?;
     // client.reinitialize()?;
 
-    // std::thread::sleep(Duration::from_secs(10));
     let bind_addr = SocketAddr::from((config.listen_addr, config_txt.udp_port_lidar));
     let socket = UdpSocket::bind(bind_addr)?;
     socket.set_read_timeout(Some(timeout))?;
@@ -88,10 +75,6 @@ fn main() -> Result<()> {
         let mut buf = [0; MAX_UDP_PACKET_SIZE];
         let (read_size, peer_addr) = socket.recv_from(&mut buf)?;
 
-        // if lidar_addr.ip() != peer_addr.ip() || packet_size != read_size {
-        //     println!("Lidar IP - {},  {}\n {}: {}",lidar_addr.ip() , peer_addr.ip(), packet_size,read_size );
-        //     continue;
-        // }
 
         let packet_buf = &buf[..packet_size];
         match OusterPacket::from_slice(packet_buf) {
@@ -209,16 +192,6 @@ fn publish_message(packet: &OusterPacket) {
                 }
             }
         }
-
-        // write to console
-        // let message = ouster_data_reader::lidar_read()?;
-        //
-        // let message = Message {
-        //     bytes: [1; 1001],
-        //     packet_size: 65507,
-        //     id: rand::random()
-        // };
-        // println!("Packet Data : {:?}", message);
 
         // write to DDS
         let columns = packet.columns;
