@@ -1,10 +1,14 @@
 //! Provides a set of _C-packed_ structs for Ouster packets.
+use rustdds::Keyed;
+
 use super::consts::{COLUMNS_PER_PACKET, ENCODER_TICKS_PER_REV, PIXELS_PER_COLUMN};
 use crate::common::*;
 
+pub use serde_big_array::BigArray;
+
 /// Represents a point of signal measurement.
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Pixel {
     /// The least significant 20 bits form distance in millimeters.
     pub raw_distance: u32,
@@ -27,7 +31,7 @@ impl Pixel {
 
 /// Represents a list of [Pixel]s along with meta data.
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Column {
     /// Unix timestamp in nanoseconds.
     pub timestamp: u64,
@@ -38,9 +42,18 @@ pub struct Column {
     /// Clockwise encoder count of rotation motor ranging from 0 to [ENCODER_TICKS_PER_REV] (exclusive).
     pub encoder_ticks: u32,
     /// Array of pixels.
+    #[serde(with = "BigArray")]
     pub pixels: [Pixel; PIXELS_PER_COLUMN],
     /// Packet validility mark. True if value is 0xffffffff.
     pub raw_valid: u32,
+}
+
+impl Keyed for Column {
+    type K = u64;
+
+    fn key(&self) -> Self::K {
+        self.frame_id as u64 + self.measurement_id  as u64 + self.encoder_ticks as u64
+    }
 }
 
 impl Column {
@@ -78,9 +91,10 @@ impl Column {
 
 /// Represents a data packet from Ouster sensor.
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize , Deserialize)]
 pub struct Packet {
     pub columns: [Column; COLUMNS_PER_PACKET],
+    id: u64,
 }
 
 impl Packet {
@@ -99,6 +113,14 @@ impl Packet {
         );
         let packet = unsafe { &*(buffer.as_ptr() as *const Packet) };
         Ok(packet)
+    }
+}
+
+impl Keyed for Packet {
+    type K = u64;
+
+    fn key(&self) -> u64 {
+        self.id
     }
 }
 

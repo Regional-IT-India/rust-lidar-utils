@@ -29,3 +29,11 @@ pcap = "0.9.1"
 [features]
 all-tests = ["ouster-client-test"]
 ouster-client-test = []
+
+[[bin]]
+name = "publisher"
+path = "applications/publisher.rs"
+
+[[bin]]
+name = "subscriber"
+path = "applications/subscriber.rs"
