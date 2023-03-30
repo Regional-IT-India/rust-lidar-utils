@@ -5,7 +5,7 @@ use mio::{Events, Poll, PollOpt, Ready, Token};
 use mio_extras::channel;
 use rustdds::{DomainParticipant, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind};
 use rustdds::policy::{Durability, History, Reliability};
-use ouster_lidar::{Column};
+use ouster_lidar::{Column, PacketMetaData};
 
 const READER_READY: Token = Token(1);
 const READER_STATUS_READY: Token = Token(2);
@@ -68,7 +68,7 @@ fn main() {
     let mut reader = {
         let subscriber = domain_participant.create_subscriber(&qos).unwrap();
         let mut reader = subscriber
-            .create_datareader_cdr::<Column>(&topic, Some(qos))
+            .create_datareader_cdr::<PacketMetaData>(&topic, Some(qos))
             .unwrap();
         poll
             .register(&reader, READER_READY, Ready::readable(), PollOpt::edge())

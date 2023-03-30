@@ -24,8 +24,8 @@ pub struct Config {
 impl Config {
     /// Creates new config.
     pub fn new(
-        beam_altitude_angles: [f64; PIXELS_PER_COLUMN],
-        beam_azimuth_angle_corrections: [f64; PIXELS_PER_COLUMN],
+        beam_altitude_angles: [R64; PIXELS_PER_COLUMN],
+        beam_azimuth_angle_corrections: [R64; PIXELS_PER_COLUMN],
         lidar_mode: LidarMode,
     ) -> Config {
         Config {

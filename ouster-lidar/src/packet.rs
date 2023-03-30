@@ -1,10 +1,10 @@
 //! Provides a set of _C-packed_ structs for Ouster packets.
 use rustdds::Keyed;
+pub use serde_big_array::BigArray;
 
-use super::consts::{COLUMNS_PER_PACKET, ENCODER_TICKS_PER_REV, PIXELS_PER_COLUMN};
 use crate::common::*;
 
-pub use serde_big_array::BigArray;
+use super::consts::{COLUMNS_PER_PACKET, ENCODER_TICKS_PER_REV, PIXELS_PER_COLUMN};
 
 /// Represents a point of signal measurement.
 #[repr(C, packed)]
@@ -127,5 +127,24 @@ impl Keyed for Packet {
 impl AsRef<Packet> for Packet {
     fn as_ref(&self) -> &Packet {
         self
+    }
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PacketMetaData {
+    /// Unix timestamp in nanoseconds.
+    pub timestamp: u64,
+    /// The column index.
+    pub measurement_id: u16,
+    /// The frame index.
+    pub frame_id: u16,
+}
+
+impl Keyed for PacketMetaData {
+    type K = u64;
+
+    fn key(&self) -> Self::K {
+        self.timestamp
     }
 }

@@ -7,20 +7,23 @@ use std::{
 };
 
 use anyhow::Result;
-use log::{warn, error};
-use serde::Deserialize;
-
-use ouster_lidar::{client::CommandClient, Column, packet::Packet as OusterPacket};
-
-use rustdds::{DomainParticipant, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind};
-use rustdds::policy::{Durability, History, Reliability};
+use log::{error, warn};
 use mio::{Events, Poll, PollOpt, Ready, Token};
-use mio_extras::channel;
+use mio_extras::{channel, channel::Receiver};
+use rustdds::{
+    DomainParticipant,
+    Keyed, policy::{Durability, History, Reliability}, QosPolicyBuilder, StatusEvented, TopicDescription, TopicKind,
+};
+use serde::{Deserialize, Serialize};
+
+use LidarMode::Mode1024x10;
+use ouster_lidar::{client::CommandClient, Column, Config, Frame, frame_converter, FrameConverter, LidarMode, packet::Packet as OusterPacket, PacketMetaData, Pixel, PointCloudConverter};
 
 const WRITER_STATUS_READY: Token = Token(3);
 const STOP_PROGRAM: Token = Token(0);
 
 const MAX_UDP_PACKET_SIZE: usize = 65507;
+
 
 #[derive(Deserialize, Clone, Debug)]
 struct OusterClientTestConfig {
@@ -54,15 +57,22 @@ fn main() -> Result<()> {
     let imu_intrinsics = client.get_imu_intrinsics()?;
     dbg!(&imu_intrinsics);
 
-
     // try to receive udp packets
-    client.set_lidar_mode(ouster_lidar::LidarMode::Mode1024x10)?;
+    client.set_lidar_mode(Mode1024x10)?;
     client.set_timestamp_mode(ouster_lidar::TimestampMode::TimeFromInternalOsc)?;
     client.set_sync_pulse_in_polarity(ouster_lidar::Polarity::ActiveHigh)?;
     client.set_nmea_in_polarity(ouster_lidar::Polarity::ActiveHigh)?;
     client.set_udp_ip(config.listen_addr)?;
     client.set_udp_port_lidar(config_txt.udp_port_lidar)?;
     // client.reinitialize()?;
+
+    println!("{:?}", client.get_beam_intrinsics().unwrap().beam_altitude_angles);
+    println!("{:?}", client.get_beam_intrinsics().unwrap().beam_azimuth_angles);
+    println!("{:?}", client);
+
+    let converter_config = Config::new(client.get_beam_intrinsics().unwrap().beam_altitude_angles, client.get_beam_intrinsics().unwrap().beam_azimuth_angles, Mode1024x10);
+
+    let mut frame_converter = FrameConverter::from_config(converter_config);
 
     let bind_addr = SocketAddr::from((config.listen_addr, config_txt.udp_port_lidar));
     let socket = UdpSocket::bind(bind_addr)?;
@@ -75,15 +85,18 @@ fn main() -> Result<()> {
         let mut buf = [0; MAX_UDP_PACKET_SIZE];
         let (read_size, peer_addr) = socket.recv_from(&mut buf)?;
 
-
         let packet_buf = &buf[..packet_size];
         match OusterPacket::from_slice(packet_buf) {
             Ok(_packet) => {
-                println!(
-                    "received packet: {:?}, from LIDAR in {} milliseconds",
-                    _packet,
-                    instant.elapsed().as_secs()
-                );
+                // println!(
+                //     "received packet: {:?}, from LIDAR in {} milliseconds",
+                //     _packet,
+                //     instant.elapsed().as_secs()
+                // );
+
+                let frame = frame_converter.push_packet(_packet);
+                let frame = frame_converter.finish();
+                println!("{:?}", frame);
 
                 publish_message(_packet);
 
@@ -134,26 +147,8 @@ fn publish_message(packet: &OusterPacket) {
         topic.get_type().name()
     );
 
-    // Set Ctrl-C handler
-    let (stop_sender, stop_receiver) = channel::channel();
-    ctrlc::set_handler(move || {
-        stop_sender.send(()).unwrap_or(());
-        // ignore errors, as we are quitting anyway
-    })
-        .expect("Error setting Ctrl-C handler");
-    println!("Press Ctrl-C to quit.");
-
     let poll = Poll::new().unwrap();
     let mut events = Events::with_capacity(4);
-
-
-    poll.register(
-        &stop_receiver,
-        STOP_PROGRAM,
-        Ready::readable(),
-        PollOpt::edge(),
-    ).unwrap();
-
 
     let writer = {
         let publisher = domain_participant.create_publisher(&qos).unwrap();
@@ -177,10 +172,7 @@ fn publish_message(packet: &OusterPacket) {
         for event in &events {
             match event.token() {
                 STOP_PROGRAM => {
-                    if stop_receiver.try_recv().is_ok() {
-                        println!("Done.");
-                        return;
-                    }
+                    return;
                 }
                 WRITER_STATUS_READY => {
                     while let Some(status) = writer.try_recv_status() {
@@ -188,15 +180,19 @@ fn publish_message(packet: &OusterPacket) {
                     }
                 }
                 other_token => {
-                    println!("Polled event is {:?}. WTF?", other_token);
+                    println!("Polled event is {:?}", other_token);
                 }
             }
         }
 
         // write to DDS
-        let columns = packet.columns;
 
-        for column in columns {
+        packet.columns.map(|column| {
+            let packet_metadata = PacketMetaData {
+                timestamp: column.timestamp,
+                measurement_id: column.measurement_id,
+                frame_id: column.frame_id,
+            };
             let now = Instant::now();
             if last_write + loop_delay < now {
                 writer
@@ -204,6 +200,6 @@ fn publish_message(packet: &OusterPacket) {
                     .unwrap_or_else(|e| error!("DataWriter write failed: {:?}", e));
                 last_write = now;
             }
-        }
+        });
     }
 }
