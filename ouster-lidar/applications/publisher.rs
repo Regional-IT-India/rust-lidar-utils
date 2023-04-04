@@ -81,10 +81,10 @@ fn main() -> Result<()> {
 
     // println!("Columns per revolution {}", frame_converter.columns_per_revolution());
     let mut frames: Vec<Frame> = vec![];
-    let mut n = 1024 * 10;
-    while n > 0 {
-        n -= 1;
-        println!("{}", n);
+    let mut iterations = client.get_config_txt().unwrap().lidar_mode.columns_per_revolution();
+    while iterations > 0 {
+        iterations -= 1;
+        println!("{}", iterations);
         // receive UDP packet
         let mut buf = [0; MAX_UDP_PACKET_SIZE];
         let (read_size, peer_addr) = socket.recv_from(&mut buf)?;
