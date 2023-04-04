@@ -17,7 +17,7 @@ use rustdds::{
 use serde::{Deserialize, Serialize};
 
 use LidarMode::Mode1024x10;
-use ouster_lidar::{client::CommandClient, Column, Config, Frame, frame_converter, FrameConverter, LidarMode, packet::Packet as OusterPacket, PacketMetaData, Pixel, PointCloudConverter};
+use ouster_lidar::{client::CommandClient, Column, Config, Frame, frame_converter, FrameConverter, LidarMode, Packet, packet::Packet as OusterPacket, PacketMetaData, Pixel, PointCloudConverter};
 
 const WRITER_STATUS_READY: Token = Token(3);
 const STOP_PROGRAM: Token = Token(0);
@@ -78,9 +78,13 @@ fn main() -> Result<()> {
     let socket = UdpSocket::bind(bind_addr)?;
     socket.set_read_timeout(Some(timeout))?;
     let packet_size = std::mem::size_of::<OusterPacket>();
-    let instant = Instant::now();
 
-    loop {
+    // println!("Columns per revolution {}", frame_converter.columns_per_revolution());
+    let mut frames: Vec<Frame> = vec![];
+    let mut n = 1024 * 10;
+    while n > 0 {
+        n -= 1;
+        println!("{}", n);
         // receive UDP packet
         let mut buf = [0; MAX_UDP_PACKET_SIZE];
         let (read_size, peer_addr) = socket.recv_from(&mut buf)?;
@@ -88,19 +92,9 @@ fn main() -> Result<()> {
         let packet_buf = &buf[..packet_size];
         match OusterPacket::from_slice(packet_buf) {
             Ok(_packet) => {
-                // println!(
-                //     "received packet: {:?}, from LIDAR in {} milliseconds",
-                //     _packet,
-                //     instant.elapsed().as_secs()
-                // );
+                // print_packet(*_packet);
 
-                let frame = frame_converter.push_packet(_packet);
-                let frame = frame_converter.finish();
-                println!("{:?}", frame);
-
-                publish_message(_packet);
-
-                break;
+                frames = frame_converter.push_packet(_packet).unwrap();
             }
             Err(error) => {
                 warn!(
@@ -112,7 +106,39 @@ fn main() -> Result<()> {
         }
     }
 
+    write_pcd_file(frame_converter);
+
     Ok(())
+}
+
+fn write_pcd_file(frame_converter: FrameConverter) {
+    let frame = frame_converter.finish().unwrap();
+    let path = std::path::Path::new("lidar_1.pcd");
+    let mut file = std::fs::File::create(path).unwrap();
+    writeln!(file, "# .PCD v.7 - Point Cloud Data file format
+VERSION .7
+FIELDS x y z
+SIZE 4 4 4
+TYPE F F F
+COUNT 1 1 1
+WIDTH {}
+HEIGHT 1
+VIEWPOINT 0 0 0 1 0 0 0
+POINTS {}
+DATA ascii", frame.points.len(), frame.points.len());
+    let points_data = frame.points.iter().map(|point| {
+        writeln!(file, "{} {} {}", point.point[0].as_meters(), point.point[1].as_meters(), point.point[2].as_meters());
+        (point.point[0].as_meters(), point.point[1].as_meters(), point.point[2].as_meters())
+    }).collect::<Vec<(f64, f64, f64)>>();
+}
+
+fn print_packet(packet: Packet) {
+    let instant = Instant::now();
+    println!(
+        "received packet: {:?}, from LIDAR in {} milliseconds",
+        packet,
+        instant.elapsed().as_secs()
+    );
 }
 
 fn publish_message(packet: &OusterPacket) {
